@@ -94,6 +94,9 @@ m_w_5_states <- msm(stagecat ~ date, ID, data = markov_w_5_stages, qmatrix = qma
 
 # Print MSM 
 printold.msm(m_w_5_states)
+
+# Save as R object
+saveRDS(m_w_5_states, "/Users/sreynolds2/Documents/GitHub/MS-Markov_Covid_Staging/5-state_MM")
 ```
 
 # Total LOS for patients at moderate (1) and severe (2) stage categories
@@ -115,17 +118,20 @@ logLik.msm(m_w_5_states)
 
 # Compare 4-State and 5-State models
 ```{r Compare both models w/ diff in LogLik and AIC}
+# Load 4-state_MM
+m_w_4_states <- readRDS("/Users/sreynolds2/Documents/GitHub/MS-Markov_Covid_Staging/4-state_MM")
+
 # Calculate difference in log likelihood ratios between `m` and `m_w_5_states`
-diff_logLik <- logLik.msm(m_w_5_states) - logLik.msm(m)
+diff_logLik <- logLik.msm(m_w_5_states) - logLik.msm(m_w_4_states)
 
 # Calculate standard AIC for both models
-AIC(m, m_w_5_states)
+AIC(m_w_4_states, m_w_5_states)
 
 # Difference in Restricted AIC (DRAIC) ---- 
     # Compare predictive ability of two Markov multi-state models (MSM)
     # NOTE: The functions below take forever to run.
 
-# DRAIC_results <- draic.msm(msm.full = m_w_5_states, msm.coarse = m)
+# DRAIC_results <- draic.msm(msm.full = m_w_5_states, msm.coarse = m_w_4_states)
 # draic_value <- DRAIC_results$draic
 
 # Difference in Restricted AIC (DRAIC) = 0.144 indicating that the coarse model (one w/ fewer parameters) is preferred.
@@ -144,5 +150,4 @@ mutate(stagecat = case_when(stage == 4 ~ "1",
     select(ID, date, stagecat, adm_stagecat) 
 # table(df$adm_stagecat)
 ```
-
 

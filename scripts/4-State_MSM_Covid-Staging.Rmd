@@ -35,10 +35,11 @@ table(raw$stage)
 ```
 
 # Transform stages to stage categories
-    # Stage 4-5 = 1 (Moderate)
-    # Stage 6-9 = 2 (Severe)
-    # Stage 10 = 3 (Dead)
-    # Discharged = 4 
+
+    * Stage 4-5 -> 1 (Moderate)
+    * Stage 6-9 -> 3 (Severe)
+    * Stage 10 -> 4 (Dead)
+    * Discharged -> 5 (Discharged)
 ```{r Collapse stages to stage categories}
 df <- raw %>%
     mutate(stagecat = case_when(stage %in% c(4, 5) ~ "1",
@@ -72,7 +73,6 @@ markov$stagecat <- factor(markov$stagecat,
 Create freq table counting # of times each pair of states were observed in succession, where rows = starting states, and columns = ending states.
 ```{r State transition table}
 statetable.msm(state = stagecat, subject = ID, data = markov)
-
 ```
 
 # Create matrix of "allowed" transitions
@@ -95,6 +95,9 @@ m <- msm(stagecat ~ date, ID, data = markov, qmatrix = qmat, obstype = 2)
 
 # Print MSM 
 printold.msm(m)
+
+# Save as R object
+saveRDS(m, "/Users/sreynolds2/Documents/GitHub/MS-Markov_Covid_Staging/4-state_MM")
 ```
 
 # Total LOS for patients at moderate (1) and severe (2) stage categories
