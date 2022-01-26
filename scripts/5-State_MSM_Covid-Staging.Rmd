@@ -3,13 +3,14 @@ title: "5-State Markov Model - Covid Staging Data"
 author: "Steph Reynolds (Stephanie.Reynolds@ucsf.edu)"
 date: "`r format(Sys.time(), '%b %d, %Y  %H:%M %p')`"
 output:
-  html_document:
+  pdf_document:
     toc: true
     number_sections: true
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(tidy.opts = list(width.cutoff = 60), tidy = TRUE)
 ```
 
 # Background
@@ -136,18 +137,5 @@ AIC(m_w_4_states, m_w_5_states)
 
 # Difference in Restricted AIC (DRAIC) = 0.144 indicating that the coarse model (one w/ fewer parameters) is preferred.
     # Positive value for DRAIC = coarse model is preferred, while negative value = full model is preferred.
-```
-
-# DISREGARD CODE BELOW - Use if want to add variable for stagecat at ADMISSION
-```{r Disregard for now, eval = F}
-# df <- raw %>%
-mutate(stagecat = case_when(stage == 4 ~ "1",
-                            stage == 5 ~ "2",
-                            stage %in% 6:9 ~ "3",
-                            stage == 10 ~ "4")) %>% 
-    group_by(ID) %>% 
-    mutate(adm_stagecat = stagecat[date==min(date)]) %>% 
-    select(ID, date, stagecat, adm_stagecat) 
-# table(df$adm_stagecat)
 ```
 

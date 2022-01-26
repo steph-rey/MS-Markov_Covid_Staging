@@ -28,3 +28,5 @@ rsconnect/
 data/
 # Ignore .html files generated from RMarkdown 
 *.html
+# Ignore .pdf files generated from RMarkdown 
+*.pdf

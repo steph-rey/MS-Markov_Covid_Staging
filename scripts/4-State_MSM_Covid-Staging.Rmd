@@ -3,13 +3,14 @@ title: "4-State Markov Model - Covid Staging Data"
 author: "Steph Reynolds (Stephanie.Reynolds@ucsf.edu)"
 date: "`r format(Sys.time(), '%b %d, %Y  %H:%M %p')`"
 output:
-  html_document:
+  pdf_document:
     toc: true
     number_sections: true
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(tidy.opts = list(width.cutoff = 60), tidy = TRUE)
 ```
 
 # Background

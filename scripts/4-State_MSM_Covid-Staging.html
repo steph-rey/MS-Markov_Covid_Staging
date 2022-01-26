@@ -166,7 +166,7 @@ pre code {
 
 <h1 class="title toc-ignore">4-State Markov Model - Covid Staging Data</h1>
 <h4 class="author">Steph Reynolds (<a href="mailto:Stephanie.Reynolds@ucsf.edu" class="email">Stephanie.Reynolds@ucsf.edu</a>)</h4>
-<h4 class="date">Jan 26, 2022 09:20 AM</h4>
+<h4 class="date">Jan 26, 2022 09:33 AM</h4>
 
 </div>
 
@@ -216,10 +216,10 @@ table(raw$stage)</code></pre>
 </div>
 <div id="transform-stages-to-stage-categories" class="section level1" number="4">
 <h1 number="4"><span class="header-section-number">4</span> Transform stages to stage categories</h1>
-<pre><code>* Stage 4-5 -&gt; 1 (Moderate)
-* Stage 6-9 -&gt; 3 (Severe)
-* Stage 10 -&gt; 4 (Dead)
-* Discharged -&gt; 5 (Discharged)</code></pre>
+<pre><code># Stage 4-5 = 1 (Moderate)
+# Stage 6-9 = 2 (Severe)
+# Stage 10 = 3 (Dead)
+# Discharged = 4 (Discharged)</code></pre>
 <pre class="r"><code>df &lt;- raw %&gt;%
     mutate(stagecat = case_when(stage %in% c(4, 5) ~ &quot;1&quot;,
                                 stage %in% 6:9 ~ &quot;2&quot;,
@@ -295,6 +295,8 @@ printold.msm(m)</code></pre>
 ##    4 0                               0                              
 ## 
 ## -2 * log-likelihood:  14351.81</code></pre>
+<pre class="r"><code># Save as R object
+saveRDS(m, &quot;/Users/sreynolds2/Documents/GitHub/MS-Markov_Covid_Staging/4-state_MM&quot;)</code></pre>
 </div>
 <div id="total-los-for-patients-at-moderate-1-and-severe-2-stage-categories" class="section level1" number="9">
 <h1 number="9"><span class="header-section-number">9</span> Total LOS for patients at moderate (1) and severe (2) stage categories</h1>
