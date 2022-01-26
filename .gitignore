@@ -26,3 +26,5 @@ vignettes/*.pdf
 rsconnect/
 # Ignore data
 data/
+# Ignore .html files generated from RMarkdown 
+*.html
