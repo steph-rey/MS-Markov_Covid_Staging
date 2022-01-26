@@ -2,7 +2,7 @@
 # @Project: Mindscape
 # @Author: Stephanie.Reynolds@ucsf.edu
 # @DateCreated: 01-25-2022
-# @DateModified: 01-25-2022
+# @DateModified: 01-26-2022
 
 # NOTE: This is a 4-state Markov Model where Moderate=1, Severe=2, Dead=3, and Discharged=4
 
@@ -14,10 +14,10 @@ library(msm)
 raw <- read_csv("/Users/sreynolds2/Documents/GitHub/MS-Markov_Covid_Staging/data/dm_stg_clean_11.08.21.csv")
 
 # Transform stages to stage categories ----
-    # stages 4-5 = 1 (moderate)
-    # stages 6-9 = 2 (severe)
-    # stage 10 = 3 (dead)
-    # discharged = 4 
+    # Stage 4-5 = 1 (Moderate)
+    # Stage 6-9 = 2 (Severe)
+    # Stage 10 = 3 (Dead)
+    # Discharged = 4 
 df <- raw %>%
     mutate(stagecat = case_when(stage %in% c(4, 5) ~ "1",
                                 stage %in% 6:9 ~ "2",
