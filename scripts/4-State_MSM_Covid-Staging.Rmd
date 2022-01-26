@@ -36,10 +36,10 @@ table(raw$stage)
 
 # Transform stages to stage categories
 
-    * Stage 4-5 -> 1 (Moderate)
-    * Stage 6-9 -> 3 (Severe)
-    * Stage 10 -> 4 (Dead)
-    * Discharged -> 5 (Discharged)
+    # Stage 4-5 = 1 (Moderate)
+    # Stage 6-9 = 2 (Severe)
+    # Stage 10 = 3 (Dead)
+    # Discharged = 4 (Discharged)
 ```{r Collapse stages to stage categories}
 df <- raw %>%
     mutate(stagecat = case_when(stage %in% c(4, 5) ~ "1",
@@ -66,7 +66,6 @@ markov <- df %>%
 markov$stagecat <- factor(markov$stagecat, 
                           ordered = TRUE, 
                           levels = c("1", "2", "3", "4"))
-
 ```
     
 # Generate table of state transitions
