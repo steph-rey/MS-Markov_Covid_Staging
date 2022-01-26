@@ -1,0 +1,115 @@
+---
+title: "5-State Markov Model - Covid Staging Data"
+author: "Steph Reynolds (Stephanie.Reynolds@ucsf.edu)"
+date: "`r format(Sys.time(), '%b %d, %Y  %H:%M %p')`"
+output:
+  html_document:
+    toc: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Background
+
+## Project 
+MINDSCAPE: Modeling of infectious network dynamics for surveillance, control and prevention enhancement
+
+## Description
+This file builds a 5-state Markov Model using the msm package to assess the trajectory of Covid-positive patients. The five states include: LowMod=1, HighMod=2, Severe=3, Dead=4, and Discharged=5. The resulting Markov Model will then be compared to the 4-State MSM.
+
+# Load required packages
+```{r Load required packages, include=F}
+library(tidyverse)
+library(msm)
+```
+
+# Import and preview data
+```{r Import data}
+raw <- read_csv("/Users/sreynolds2/Documents/GitHub/MS-Markov_Covid_Staging/data/dm_stg_clean_11.08.21.csv")
+
+# Frequency table for stage
+table(raw$stage)
+```
+
+# Transform stages to stage categories
+
+    * Stage 4 -> 1 (Low Moderate)
+    * Stage 5 -> 2 (High Moderate)
+    * Stage 6-9 -> 3 (Severe)
+    * Stage 10 -> 4 (Dead)
+    * Discharged -> 5 (Discharged)
+```{r Collapse stages to stage categories}
+df <- raw %>%
+    mutate(stagecat = case_when(stage == 4 ~ "1",
+                                stage == 5 ~ "2",
+                                stage %in% 6:9 ~ "3",
+                                stage == 10 ~ "4")) %>%
+    select(ID, date, stagecat)
+```
+
+# Prep dataset for Markov Model
+For each 'ID', create new row to represent discharge state. Bind to dataset and arrange by 'ID' and 'date'.
+```{r Prep data for Markov Model}
+markov_w_5_stages <- df %>%
+    group_by(ID) %>%
+    summarize(date = max(date) + 1) %>%
+    mutate(stagecat = NA) %>%
+    rbind(df) %>%
+    arrange(ID, date) %>%
+    mutate(stagecat = case_when(is.na(stagecat) ~ "5",
+                                TRUE ~ stagecat))
+
+markov_w_5_stages$stagecat <- factor(markov_w_5_stages$stagecat, 
+                          ordered = TRUE, 
+                          levels = c("1", "2", "3", "4", "5"))
+```
+    
+# Generate table of state transitions
+Create freq table counting # of times each pair of states were observed in succession, where rows = starting states, and columns = ending states.
+```{r State transition table}
+statetable.msm(state = stagecat, subject = ID, data = markov_w_5_stages)
+```
+
+# Create matrix of "allowed" transitions
+where 1 = allowed transitions and 0 = forbidden transitions 
+```{r Transition matrix}
+qmat1 <- matrix(c(1,1,1,1,1,
+                  1,1,1,1,1,
+                  1,1,1,1,1,
+                  0,0,0,0,1,
+                  0,0,0,0,1),
+                nrow = 5, ncol = 5,
+                byrow=TRUE,
+                dimnames=list(from=1:5, to=1:5))
+```
+
+# Fit continuous time Markov multi-state model (MSM) by maximum likelihood
+Note: Set obstype = 2 --> Considered an "exact transition time." Even though this is not necessarily true with our dataset since it's more discrete than continuous, we are assuming that the pt remains at the state at previous observation until the current observation. It does not allow for a change in state in between observation points.
+```{r Fit Markov model and print}
+# Run MSM function
+m_w_5_states <- msm(stagecat ~ date, ID, data = markov_w_5_stages, qmatrix = qmat1, obstype = 2)
+
+# Print MSM 
+printold.msm(m_w_5_states)
+```
+
+# Total LOS for patients at moderate (1) and severe (2) stage categories
+```{r Total LOS}
+totlos.msm(m, end = c("1", "2"))
+```
+
+# Probability matrix and estimated transition intensity (rate) matrix
+```{r Probability and transition intensity matrices}
+pmatrix.msm(m)
+
+qmatrix.msm(m)
+```
+
+# Log likelihood ratio
+```{r Log likelihood ratio}
+logLik.msm(m)
+```
+
