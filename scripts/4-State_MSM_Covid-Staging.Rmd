@@ -53,6 +53,7 @@ df <- raw %>%
 
 # Prep dataset for Markov Model
 For each 'ID', create new row to represent discharge state. Bind to dataset and arrange by 'ID' and 'date'.
+Then crate new variable `stagecat` and assign to 4 or discharge. 
 ```{r Prep data for Markov Model}
 markov <- df %>%
     group_by(ID) %>%
