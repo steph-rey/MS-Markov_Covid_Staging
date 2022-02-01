@@ -52,18 +52,21 @@ df <- raw %>%
 ```
 
 # Prep dataset for Markov Model
-For each 'ID', create new row to represent discharge state. Bind to dataset and arrange by 'ID' and 'date'.
+For each ID that does not die, create new row to represent discharge state. Bind to dataset.
 ```{r Prep data for Markov Model}
-markov_w_5_stages <- df %>%
-    group_by(ID) %>%
-    summarize(date = max(date) + 1) %>%
-    mutate(stagecat = NA) %>%
-    rbind(df) %>%
-    arrange(ID, date) %>%
-    mutate(stagecat = case_when(is.na(stagecat) ~ "5",
-                                TRUE ~ stagecat))
+markov_w_5_states <- df %>%
+  group_by(ID) %>%
+  do ({
+    if (max(.$stagecat)==4) {
+      df <- .
+    } else {
+      new <- tibble(ID=.$ID[1], date=max(.$date)+1, stagecat=5)
+      df <- rbind(., new)
+    }
+    df
+})
 
-markov_w_5_stages$stagecat <- factor(markov_w_5_stages$stagecat, 
+markov_w_5_states$stagecat <- factor(markov_w_5_states$stagecat, 
                           ordered = TRUE, 
                           levels = c("1", "2", "3", "4", "5"))
 ```
@@ -71,7 +74,7 @@ markov_w_5_stages$stagecat <- factor(markov_w_5_stages$stagecat,
 # Generate table of state transitions
 Create freq table counting # of times each pair of states were observed in succession, where rows = starting states, and columns = ending states.
 ```{r State transition table}
-statetable.msm(state = stagecat, subject = ID, data = markov_w_5_stages)
+statetable.msm(state = stagecat, subject = ID, data = markov_w_5_states)
 ```
 
 # Create matrix of "allowed" transitions
@@ -80,7 +83,7 @@ where 1 = allowed transitions and 0 = forbidden transitions
 qmat1 <- matrix(c(1,1,1,1,1,
                   1,1,1,1,1,
                   1,1,1,1,1,
-                  0,0,0,0,1,
+                  0,0,0,1,0,
                   0,0,0,0,1),
                 nrow = 5, ncol = 5,
                 byrow=TRUE,
@@ -91,7 +94,7 @@ qmat1 <- matrix(c(1,1,1,1,1,
 Note: Set obstype = 2 --> Considered an "exact transition time." Even though this is not necessarily true with our dataset since it's more discrete than continuous, we are assuming that the pt remains at the state at previous observation until the current observation. It does not allow for a change in state in between observation points.
 ```{r Fit Markov model and print}
 # Run MSM function
-m_w_5_states <- msm(stagecat ~ date, ID, data = markov_w_5_stages, qmatrix = qmat1, obstype = 2)
+m_w_5_states <- msm(stagecat ~ date, ID, data = markov_w_5_states, qmatrix = qmat1, obstype = 2)
 
 # Print MSM 
 printold.msm(m_w_5_states)
@@ -122,18 +125,23 @@ logLik.msm(m_w_5_states)
 # Load 4-state_MM
 m_w_4_states <- readRDS("/Users/sreynolds2/Documents/GitHub/MS-Markov_Covid_Staging/4-state_MM")
 
-# Calculate difference in log likelihood ratios between `m` and `m_w_5_states`
+# Calculate difference in log likelihood ratios between `m_w_4_states` and `m_w_5_states`
 diff_logLik <- logLik.msm(m_w_5_states) - logLik.msm(m_w_4_states)
+diff_logLik
+# Log likelihood of model_w_4_states is higher than that of m_w_5_states, so model with 4 parameters is preferred 
 
 # Calculate standard AIC for both models
-AIC(m_w_4_states, m_w_5_states)
+AIC(m_w_4_states)
+AIC(m_w_5_states)
+# Model with 4 states has lower AIC, so it is considered the better model
 
 # Difference in Restricted AIC (DRAIC) ---- 
     # Compare predictive ability of two Markov multi-state models (MSM)
     # NOTE: The functions below take forever to run.
 
-# DRAIC_results <- draic.msm(msm.full = m_w_5_states, msm.coarse = m_w_4_states)
-# draic_value <- DRAIC_results$draic
+DRAIC_results <- draic.msm(msm.full = m_w_5_states, msm.coarse = m_w_4_states)
+draic_value <- DRAIC_results$draic
+print(draic_value)
 
 # Difference in Restricted AIC (DRAIC) = 0.144 indicating that the coarse model (one w/ fewer parameters) is preferred.
     # Positive value for DRAIC = coarse model is preferred, while negative value = full model is preferred.

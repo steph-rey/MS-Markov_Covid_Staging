@@ -52,17 +52,20 @@ df <- raw %>%
 ```
 
 # Prep dataset for Markov Model
-For each 'ID', create new row to represent discharge state. Bind to dataset and arrange by 'ID' and 'date'.
-Then crate new variable `stagecat` and assign to 4 or discharge. 
+For each ID that does not die, create new row to represent discharge state. Bind to dataset.
+Then create new variable `stagecat` and assign to 4 or discharge. 
 ```{r Prep data for Markov Model}
 markov <- df %>%
-    group_by(ID) %>%
-    summarize(date = max(date) + 1) %>%
-    mutate(stagecat = NA) %>%
-    rbind(df) %>%
-    arrange(ID, date) %>%
-    mutate(stagecat = case_when(is.na(stagecat) ~ "4",
-                                TRUE ~ stagecat))
+  group_by(ID) %>%
+  do ({
+    if (max(.$stagecat)==3) {
+      df <- .
+    } else {
+      new <- tibble(ID=.$ID[1], date=max(.$date)+1, stagecat=4)
+      df <- rbind(., new)
+    }
+    df
+})
 
 # Convert stagecat to ordinal factor variable
 markov$stagecat <- factor(markov$stagecat, 
@@ -81,7 +84,7 @@ where 1 = allowed transitions and 0 = forbidden transitions
 ```{r Transition matrix}
 qmat <- matrix(c(1,1,1,1,
                   1,1,1,1,
-                  0,0,0,1,
+                  0,0,1,0,
                   0,0,0,1),
                 nrow = 4, ncol = 4,
                 byrow=TRUE,
@@ -116,5 +119,17 @@ qmatrix.msm(m)
 # Log likelihood ratio
 ```{r Log likelihood ratio}
 logLik.msm(m)
+```
+
+# Disregard prior code attempt 
+```{r, eval=F}
+markov <- df %>% 
+  group_by(ID) %>% 
+  summarize(date = max(date) + 1) %>%
+    mutate(stagecat = NA) %>%
+    rbind(df) %>%
+    arrange(ID, date) %>%
+    mutate(stagecat = case_when(is.na(stagecat) ~ "4",
+                                TRUE ~ stagecat))
 ```
 
