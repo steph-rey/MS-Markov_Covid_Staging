@@ -69,6 +69,7 @@ markov_w_5_states <- df %>%
 markov_w_5_states$stagecat <- factor(markov_w_5_states$stagecat, 
                           ordered = TRUE, 
                           levels = c("1", "2", "3", "4", "5"))
+
 ```
     
 # Generate table of state transitions
