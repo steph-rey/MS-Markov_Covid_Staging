@@ -121,8 +121,8 @@ qmatrix.msm(m)
 logLik.msm(m)
 ```
 
-# Disregard prior code attempt 
-```{r, eval=F}
+# Disregard below - prior code attempt 
+```{r, eval=F, include=F}
 markov <- df %>% 
   group_by(ID) %>% 
   summarize(date = max(date) + 1) %>%
