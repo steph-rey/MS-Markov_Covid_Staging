@@ -1,0 +1,177 @@
+---
+title: "Development of Markov Model - Covid Staging Data"
+author: "Steph Reynolds (Stephanie.Reynolds@ucsf.edu)"
+date: "`r format(Sys.time(), '%b %d, %Y  %H:%M %p')`"
+output:
+  pdf_document:
+    toc: true
+    number_sections: true
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(tidy.opts = list(width.cutoff = 60), tidy = TRUE)
+```
+
+# Background
+
+## Project
+
+MINDSCAPE: Modeling of infectious network dynamics for surveillance,
+control and prevention enhancement
+
+## Description
+
+This files builds a 4-state Markov Model using the `markovchain` package
+to assess the trajectory of hospitalized COVID-19 patients. The four
+states include: Moderate=1, Severe=2, Dead=3, and Discharged=4.
+
+The stage transition matrix probabilities were imported from the
+previous script.
+
+# Load required packages
+
+```{r Load required packages, include=F}
+library(markovchain)
+library(igraph)
+library(tidyverse)
+
+# Common issues with select being masked from dplyr by MASS
+select <- dplyr::select
+```
+
+# Import stage transition probabilites vector and convert to matrix `prob_mat`
+
+```{r Import stage transition prob vector and convert to matrix}
+# Read in prob_vect
+prob_vect <- readRDS("/Users/sreynolds2/Documents/GitHub/MS-Markov_Covid_Staging/data/prob_vect.rds")
+
+# Assign names of stages to states vector
+states <- c("Moderate", "Severe", "Dead", "Discharged")
+
+# Convert prob_vect to matrix 
+prob_mat <- matrix(data = prob_vect, byrow = T, 
+                   nrow = 4,
+                   ncol = 4,
+                   dimnames = list(from = states, to = states))
+prob_mat
+
+# Save as RDS object
+saveRDS(prob_mat, "/Users/sreynolds2/Documents/GitHub/MS-Markov_Covid_Staging/data/prob_mat.rds")
+```
+
+# Create Markov Chain object
+
+```{r Create Markov Chain object}
+mc <- new("markovchain", states = states, byrow = T, transitionMatrix = prob_mat, name = "Markov Model for COVID-19 Patients")
+mc
+```
+
+# Plot Markov Chain
+
+```{r Plot Markov Chain}
+plot(mc, main = "Markov Model for COVID-19 Patients")
+```
+
+# Practice with `markovchain` package
+
+## Define initial state probabilities and calculate likelihood of states after 5 days
+
+```{r Practice defining initial state probs and calc likelihood of states after 5 days, eval = F}
+init_state <- c(.5, .5, 0, 0)
+after5Days <- (t(mc^5)) * init_state
+after5Days
+```
+
+## Obtain transition probabilities
+
+```{r Obtain transition probabilities}
+# View states 
+markovchain::states(mc)
+
+# Obtain transition probabilities
+    # Must provide initial state (t0) and subsequent state (t1)
+
+    # Example: What is probability of transitioning FROM moderate to moderate?
+    transitionProbability(mc, t0 = "Moderate", t1 = "Moderate")
+    
+    # Example: What is probability of transitioning FROM moderate to severe?
+    transitionProbability(mc, t0 = "Moderate", t1 = "Severe")
+```
+
+## Convert Markov Chain to a dataframe to view all transition probabilities
+
+```{r Convert mc to dataframe to view all trans probs}
+as(mc, "data.frame")
+```
+
+## View summary of Markov Chain object to see closed, transient, and absorbing states
+
+```{r View summary of Markov Chain object}
+summary(mc)
+
+# Other functions
+markovchain::transientStates(mc)
+markovchain::absorbingStates(mc)
+```
+
+# Plot Markov Chain using `igraph` package
+
+```{r Plot Markov Chain using igraph package}
+# Convert Markov Chain to igraph object `g`
+g <- as(mc, "igraph")
+
+# Set colors for vertices 
+V(g)["Moderate"]$color <- "red"
+V(g)["Severe"]$color <- "green"
+V(g)["Dead"]$color <- "blue"
+V(g)["Discharged"]$color <- "purple"
+
+# Plot Markov Chain 
+plot(g, vertex.color = V(g)$color, vertex.size = 25, vertex.label.cex = 1.25, vertex.label.family = "Helvetica", vertex.label.dist = 3.5, edge.width = 2, edge.arrow.size = 1, edge.label = E(g)$prob, main = "Markov Chain for Predicting the Trajectory of COVID-19 Patients")
+
+## More advanced stuff.... 
+
+# Identify and format the strongly connected nodes 
+SCC <- clusters(g, mode="strong")
+V(g)$color <- rainbow(SCC$no)[SCC$membership]
+
+# Plot with highlighted strongly connected components or states
+plot(g, mark.groups=split(1:vcount(g), SCC$membership), main="Markov Model\nwith strongly connected components")
+```
+
+# Generate sequence of states from Markov chain
+```{r}
+rep <- replicate(n=1000, expr=covid_sim_fun)
+
+covid_sim_fun <- rmarkovchain(n = 5, object = mc, t0 = "Moderate", include.t0 = T)
+covid_sim
+
+CovidFittedMLE <- markovchainFit(data = covid_sim, method = "mle", name = "COVID MLE")
+CovidFittedMLE$estimate
+CovidFittedMLE$standardError
+CovidFittedMLE$logLikelihood
+
+CovidFittedBoot <- markovchainFit(data = covid_sim, method = "bootstrap", nboot = 1000)
+CovidFittedBoot$estimate
+CovidFittedBoot$standardError
+CovidFittedBoot$logLikelihood
+
+CovidFittedBootParallel <- markovchainFit(data = covid_sim, method = "bootstrap", nboot = 1000, parallel = T)
+CovidFittedBootParallel$estimate
+CovidFittedBootParallel$standardError
+CovidFittedBootParallel$logLikelihood
+
+```
+
+
+
+Simulation
+
+Simulating a random sequence from an underlying DTMC is quite easy thanks to the function rmarkovchain. The following code generates a year of weather states according to mcWeather underlying stochastic process.
+
+weathersOfDays <- rmarkovchain(n = 365, object = mcWeather, t0 = "sunny")
+weathersOfDays[1:30]
