@@ -1,0 +1,249 @@
+---
+title: "Stage Transition Matrix Probabilities - Covid Staging Data"
+author: "Steph Reynolds (Stephanie.Reynolds@ucsf.edu)"
+date: "`r format(Sys.time(), '%b %d, %Y  %H:%M %p')`"
+output:
+  pdf_document:
+    toc: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(tidy.opts = list(width.cutoff = 60), tidy = TRUE)
+```
+
+# Background
+
+## Project
+
+MINDSCAPE: Modeling of infectious network dynamics for surveillance, control and prevention enhancement
+
+## Description
+
+This file reads in and prepares the Covid staging data for building a Markov Model. It post-processes the data to calculate the stage transition probabilities for the purpose of the transition matrix in subsequent development of the MM.
+
+# Load required packages
+
+```{r Load required packages, include=F}
+library(tidyverse)
+
+# Common issues with select being masked from dplyr by MASS
+select <- dplyr::select
+```
+
+# Import and preview data
+
+```{r Import data}
+raw <- read_csv("/Users/sreynolds2/Documents/GitHub/MS-Markov_Covid_Staging/data/dm_stg_clean_11.08.21.csv")
+```
+
+# Create new variable `stage.cat` and bind new row to represent discharge state
+
+-   **Stages 4-5** recoded as **1 or Moderate**
+
+-   **Stages 6-9** recoded as **2 or Severe**
+
+-   **Stage 10** recoded as **3 or Dead**
+
+-   New row coded as **4** **or** **Discharged**
+
+    -   For each encounter ID that does not die, create new row to represent the patient being discharged from hospital. Bind to last row for each grouped ID. For example, a patient's clinical trajectory could be: 1, 1, 2, ..., 1, 4.
+
+    -   However, if the patient dies in the hospital, do not create and bind new 'discharge' row. In other words, his/her last observation will **NOT** be 4 (Discharge). For example, a patient's clinical trajectory could be: 2, 2, ..., 3, but it could **NOT** be: 2, 2, ..., 3, 4.
+
+```{r Create stage.cat variable and bind new row for discharge state}
+# Create new variable `stage.cat` that transforms `stage` to 1 (Moderate), 2 (Severe), and 3 (Dead)
+df <- raw %>%
+    mutate(stage.cat = case_when(stage %in% 4:5 ~ 1,
+                                 stage %in% 6:9 ~ 2,
+                                 stage == 10 ~ 3)) %>%
+    dplyr::select(ID, date, stage.cat) %>%
+    group_by(ID) %>%             # Group by ID
+    do ({                        # If pt dies, leave as-is
+        if (max(.$stage.cat) == 3) {    
+            df <- .
+        } else {                 # Else... create new row where `stage.cat`==4 to represent discharged from hospital
+            new <- tibble(ID = .$ID[1],
+                          date = max(.$date) + 1,
+                          stage.cat = 4)
+            df <- rbind(., new)  # Bind to last row for each grouped ID
+        }
+        df
+    })
+```
+
+# Recode `stage.cat` variable to Moderate, Severe, Dead, and Discharge (factor type)
+
+```{r Recode stage.cat to factor type}
+df <- df %>%
+    mutate(stage.cat = case_when(stage.cat == 1 ~ "Moderate",
+                                 stage.cat == 2 ~ "Severe",
+                                 stage.cat == 3 ~ "Dead",
+                                 stage.cat == 4 ~ "Discharge"))
+```
+
+# Create table `stages_today_and_tmw` to show `stage.cat` and `stage.cat.tmw` for each encounter ID, using lead function
+
+```{r Create table of stages_today_and_tmw using lead function}
+stages_today_and_tmw <- df %>%
+    group_by(ID) %>%
+    mutate(stage.cat.tmw = lead(stage.cat),
+           stage.cat.tmw = ifelse(is.na(stage.cat.tmw), "NULL", stage.cat.tmw))
+```
+
+# Calculate number of patient-days at each `stage.cat`
+
+```{r Calculate num of pt-days at each stage.cat, eval = F}
+total_ptdays_per_stagecat <- stages_today_and_tmw %>%
+    group_by(stage.cat) %>%
+    count()
+```
+
+# Calculate total number of patient-days and assign to `n_ptdays`
+
+```{r Calculate total num of pt-days}
+n_ptdays <- length(df$ID)
+cat("Total number of patient-days =", n_ptdays)
+```
+
+# Calculate number of pt-days categorized by each type of stage transition and assign to table `stage_transition_counts`
+
+"Types" of stage transitions include:
+
+-   `Mod_to_Mod`, `Mod_to_Sev`, `Mod_to_Dead`, `Mod_to_Disc`, `Sev_to_Mod`, `Sev_to_Sev`, `Sev_to_Dead`, `Sev_to_Disc`, `Dead`, `Disc`
+
+    -   **Note:** No transition from Dead or Disc since these are "absorbing" states. In other words, once a patient enters state Dead or Discharge, they will remain there.
+
+```{r Table of frequency counts for each type of stage.transition}
+stage_transition_counts <- stages_today_and_tmw %>% 
+    mutate(Mod_to_Mod = ifelse(stage.cat=="Moderate" & stage.cat.tmw=="Moderate", 1, 0),
+           Mod_to_Sev = ifelse(stage.cat=="Moderate" & stage.cat.tmw=="Severe", 1, 0),
+           Mod_to_Dead = ifelse(stage.cat=="Moderate" & stage.cat.tmw=="Dead", 1, 0),
+           Mod_to_Disc = ifelse(stage.cat=="Moderate" & stage.cat.tmw=="Discharge", 1, 0),
+           Sev_to_Mod = ifelse(stage.cat=="Severe" & stage.cat.tmw=="Moderate", 1, 0),
+           Sev_to_Sev = ifelse(stage.cat=="Severe" & stage.cat.tmw=="Severe", 1, 0),
+           Sev_to_Dead = ifelse(stage.cat=="Severe" & stage.cat.tmw=="Dead", 1, 0),
+           Sev_to_Disc = ifelse(stage.cat=="Severe" & stage.cat.tmw=="Discharge", 1, 0),
+           Dead = ifelse(stage.cat=="Dead", 1, 0),
+           Disc = ifelse(stage.cat=="Discharge", 1, 0),
+           Moderate = ifelse(stage.cat=="Moderate", 1, 0),
+           Severe = ifelse(stage.cat=="Severe", 1, 0)) %>% 
+    summarize_if(is.numeric, sum) %>% 
+    select(-ID)
+
+# Save `as`stage_transition_counts` table as CSV file
+# write.csv(stage_transition_counts, "/Users/sreynolds2/Documents/GitHub/MS-Markov_Covid_Staging/data/stage_transition_counts.csv")
+```
+
+# Calculate stage transition probabilities and assign to table `stage_transition_probs`
+
+***Abbreviations:***
+
+-   m = Moderate
+
+-   s = Severe
+
+-   de = Dead
+
+-   di = Discharge
+
+***Examples:***
+
+-   **`prob_m.m`:** Probability of transitioning from Moderate to Moderate = sum of Mod_to_Mod / sum of pt-days in Moderate
+
+-   **`prob_m.di`:** Probability of transitioning from Moderate to Discharge = sum of Mod_to_Disc / sum of pt-days in Moderate
+
+-   **`prob_s.m`:** Probability of transitioning from Severe to Moderate = sum of Sev_to_Mod / sum of pt-days in Severe
+
+-   **`prob_de.de`** and **`prob_di.di`** both equal 1 since once a patient reaches the Dead or Discharge state, he/she stays there
+
+-   **`prob_de.m/s/di`** and **`prob_di.m/s/de`** equals 0 since no patient will transition to another state once he/she reaches the Dead or Discharge state
+
+```{r Table of probabilities for each type of stage.transition}
+stage_transition_probs <- stage_transition_counts %>%
+    summarize(prob_m.m   = sum(Mod_to_Mod) / sum(Moderate),
+              prob_m.s   = sum(Mod_to_Sev) / sum(Moderate),
+              prob_m.de  = sum(Mod_to_Dead) / sum(Moderate),
+              prob_m.di  = sum(Mod_to_Disc) / sum(Moderate),
+              prob_s.m   = sum(Sev_to_Mod) / sum(Severe),
+              prob_s.s   = sum(Sev_to_Sev) / sum(Severe),
+              prob_s.de  = sum(Sev_to_Dead) / sum(Severe),
+              prob_s.di  = sum(Sev_to_Disc) / sum(Severe),
+              prob_de.m  = 0,
+              prob_de.s  = 0,
+              prob_de.de = 1,
+              prob_de.di = 0,
+              prob_di.m  = 0,
+              prob_di.s  = 0,
+              prob_di.de = 0,
+              prob_di.di = 1)
+```
+
+# Transpose `stage_transition_probabilities`, and transform to vector `prob_vect`
+
+```{r Transpose stage_transition_probs and transform to vector}
+prob_vect <- stage_transition_probs %>% 
+    t() %>% 
+    as.vector() %>% 
+    round(digits = 3)
+
+# Save as RDS object
+saveRDS(prob_vect, "/Users/sreynolds2/Documents/GitHub/MS-Markov_Covid_Staging/data/prob_vect.rds")
+```
+
+# Alternative Method - Disregard, but save as archive
+
+```{r Alternate method for counting number of pt-days categorized by stage transition type, eval=F}
+# Count number of pt-days in each stage.cat
+total_ptdays_per_stagecat <- stages_today_and_next %>%
+    group_by(stage.cat) %>%
+    count()
+
+n_dead = total_ptdays_per_stagecat[1, 2]
+n_disc = total_ptdays_per_stagecat[2, 2]
+n_mod = total_ptdays_per_stagecat[3, 2]
+n_sev = total_ptdays_per_stagecat[4, 2]
+
+# Count number of pt-days categorized by each possible transition
+# FROM stage.cat 1 TO 1, 2, 3, 4
+# FROM stage.cat 2 TO 1, 2, 3, 4
+# FROM stage.cat 3 TO 1, 2, 3, 4 -- This will be 0, since Dead is an absorbing state.
+# FROM stage.cat 4 TO 1, 2, 3, 4 -- This will be 0, since Discharge is an absorbing state.
+
+# Table showing type of stage.transition for each pt-day
+# Categories include: Mod_to_Mod, Mod_to_Sev, Mod_to_Dead, Mod_to_Disc, Sev_to_Mod, Sev_to_Sev, Sev_to_Dead, Sev_to_Disc, Dead, Disc.
+stage_transitions <- stages_today_and_next %>%
+    mutate(stage.transition =
+               as.factor(
+                   case_when(
+                       stage.cat == "Moderate" & stage.cat.tmw == "Moderate" ~ "Mod_to_Mod",
+                       stage.cat == "Moderate" &
+                           stage.cat.tmw == "Severe" ~ "Mod_to_Sev",
+                       stage.cat == "Moderate" &
+                           stage.cat.tmw == "Dead" ~ "Mod_to_Dead",
+                       stage.cat == "Moderate" &
+                           stage.cat.tmw == "Discharge" ~ "Mod_to_Disc",
+                       stage.cat == "Severe" &
+                           stage.cat.tmw == "Moderate" ~ "Sev_to_Mod",
+                       stage.cat == "Severe" &
+                           stage.cat.tmw == "Severe" ~ "Sev_to_Sev",
+                       stage.cat == "Severe" &
+                           stage.cat.tmw == "Dead" ~ "Sev_to_Dead",
+                       stage.cat == "Severe" &
+                           stage.cat.tmw == "Discharge" ~ "Sev_to_Disc",
+                       stage.cat == "Dead" ~ "Dead",
+                       stage.cat == "Discharge" ~ "Disc"
+                   )
+               ))
+
+# Table showing number of pt-days for each possible stage transition
+counts <- stage_transitions %>%
+    group_by(stage.transition) %>%
+    summarize(n = n()) %>%
+    arrange(sub("Mod_to", "", stage.transition))
+
+probs <- counts %>%
+    summarize()
+
+```
