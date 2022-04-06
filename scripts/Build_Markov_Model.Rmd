@@ -6,9 +6,6 @@ output:
   pdf_document:
     toc: true
     number_sections: true
-editor_options: 
-  markdown: 
-    wrap: 72
 ---
 
 ```{r setup, include=FALSE}
@@ -68,6 +65,9 @@ saveRDS(prob_mat, "/Users/sreynolds2/Documents/GitHub/MS-Markov_Covid_Staging/da
 ```{r Create Markov Chain object}
 mc <- new("markovchain", states = states, byrow = T, transitionMatrix = prob_mat, name = "Markov Model for COVID-19 Patients")
 mc
+
+# Save as RDS object
+saveRDS(mc, "/Users/sreynolds2/Documents/GitHub/MS-Markov_Covid_Staging/data/mc.rds")
 ```
 
 # Plot Markov Chain
@@ -142,36 +142,3 @@ V(g)$color <- rainbow(SCC$no)[SCC$membership]
 # Plot with highlighted strongly connected components or states
 plot(g, mark.groups=split(1:vcount(g), SCC$membership), main="Markov Model\nwith strongly connected components")
 ```
-
-# Generate sequence of states from Markov chain
-```{r}
-rep <- replicate(n=1000, expr=covid_sim_fun)
-
-covid_sim_fun <- rmarkovchain(n = 5, object = mc, t0 = "Moderate", include.t0 = T)
-covid_sim
-
-CovidFittedMLE <- markovchainFit(data = covid_sim, method = "mle", name = "COVID MLE")
-CovidFittedMLE$estimate
-CovidFittedMLE$standardError
-CovidFittedMLE$logLikelihood
-
-CovidFittedBoot <- markovchainFit(data = covid_sim, method = "bootstrap", nboot = 1000)
-CovidFittedBoot$estimate
-CovidFittedBoot$standardError
-CovidFittedBoot$logLikelihood
-
-CovidFittedBootParallel <- markovchainFit(data = covid_sim, method = "bootstrap", nboot = 1000, parallel = T)
-CovidFittedBootParallel$estimate
-CovidFittedBootParallel$standardError
-CovidFittedBootParallel$logLikelihood
-
-```
-
-
-
-Simulation
-
-Simulating a random sequence from an underlying DTMC is quite easy thanks to the function rmarkovchain. The following code generates a year of weather states according to mcWeather underlying stochastic process.
-
-weathersOfDays <- rmarkovchain(n = 365, object = mcWeather, t0 = "sunny")
-weathersOfDays[1:30]
