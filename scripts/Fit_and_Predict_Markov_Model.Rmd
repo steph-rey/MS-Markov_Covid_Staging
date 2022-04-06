@@ -1,0 +1,65 @@
+---
+title: "Fitting, Predicting, and Evaluating Markov Model - Covid Staging Data"
+author: "Steph Reynolds (Stephanie.Reynolds@ucsf.edu)"
+date: "`r format(Sys.time(), '%b %d, %Y  %H:%M %p')`"
+output:
+  pdf_document:
+    toc: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(tidy.opts = list(width.cutoff = 60), tidy = TRUE)
+```
+
+# Background
+
+## Project
+
+MINDSCAPE: Modeling of infectious network dynamics for surveillance, control and prevention enhancement
+
+## Description
+
+This file imports the Markov Model for the Covid staging data and generates fitted Markov chain for a given sequence.
+
+-   **markovchainFit -** Function to return fitted Markov chain for a given sequence
+
+-   **predict -** Function to calculate predictions from markovchain objects
+
+-   **rmarkovchain -** Function to sample from markovchain objects
+
+# Load required packages and import Markov chain
+
+```{r Load required packages, message = F}
+library(markovchain)
+
+mc <- readRDS("/Users/sreynolds2/Documents/GitHub/MS-Markov_Covid_Staging/data/mc.rds")
+mc
+```
+
+# Generate fitted Markov chain for given sequence 
+
+```{r}
+# Generate sequence of states from Markov chain
+rep <- replicate(n=1000, expr=covid_sim_fun)
+
+covid_sim_fun <- rmarkovchain(n = 5, object = mc, t0 = "Moderate", include.t0 = T)
+covid_sim
+
+CovidFittedMLE <- markovchainFit(data = covid_sim, method = "mle", name = "COVID MLE")
+CovidFittedMLE$estimate
+CovidFittedMLE$standardError
+CovidFittedMLE$logLikelihood
+
+CovidFittedBoot <- markovchainFit(data = covid_sim, method = "bootstrap", nboot = 1000)
+CovidFittedBoot$estimate
+CovidFittedBoot$standardError
+CovidFittedBoot$logLikelihood
+
+CovidFittedBootParallel <- markovchainFit(data = covid_sim, method = "bootstrap", nboot = 1000, parallel = T)
+CovidFittedBootParallel$estimate
+CovidFittedBootParallel$standardError
+CovidFittedBootParallel$logLikelihood
+
+```
