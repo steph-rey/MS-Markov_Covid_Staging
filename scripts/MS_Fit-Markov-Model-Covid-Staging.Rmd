@@ -1,0 +1,274 @@
+---
+title: "Markov Model to Predict Clinical Trajectories of COVID-19 Patients"
+author: "Steph Reynolds (Stephanie.Reynolds@ucsf.edu)"
+date: "`r format(Sys.time(), '%b %d, %Y  %H:%M %p')`"
+output:
+  pdf_document:
+    toc: true
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(tidy.opts = list(width.cutoff = 60), tidy = TRUE)
+```
+
+# Background
+
+## Project
+
+MINDSCAPE: Modeling of infectious network dynamics for surveillance, control and prevention enhancement
+
+## Description
+
+This script builds and fits a Markov Model using the `msm` package to assess the clinical trajectory of hospitalized COVID-19 patients. The four states include:
+
+1.  Moderate w/o history of severe (M)
+
+2.  Moderate w/ history of severe (MS)
+
+3.  Severe (S)
+
+4.  Dead (D)
+
+# Load required packages
+
+```{r Load required packages, include=F}
+library(msm)
+library(slider) 
+library(lubridate)
+library(tidyverse)
+```
+
+# Import and preview data
+
+```{r}
+dm_stg_clean <- read_csv("/Users/sreynolds2/Documents/GitHub/MS-Markov_Covid_Staging/data/dm_stg_clean_11.08.21.csv")
+glimpse(dm_stg_clean)
+```
+
+# Categorize patients into Moderate w/o hx of Severe (M), Moderate w/ hx of Severe (S), Severe (S), and Dead (D)
+
+```{r Categorize into M, MS, S, and D}
+df <- dm_stg_clean %>%
+    mutate(stage_cat = case_when(stage %in% 4:5 ~ "M",
+                                 stage %in% 6:9 ~ "S",
+                                 stage == 10 ~ "D"),
+           severe_yn = ifelse(stage_cat=="S", 1, 0)) %>% 
+    group_by(ID) %>% 
+    mutate(hx_severe = slider::slide_index_sum(x = severe_yn, 
+                                               i = date, 
+                                               before = lubridate::days(365)),
+           state = case_when(stage_cat=="D" ~ "D",
+                             stage_cat=="S" ~ "S",
+                             stage_cat=="M" & hx_severe==0 ~ "M",
+                             stage_cat=="M" & hx_severe>0 ~ "MS")) %>% 
+    select(ID, date, state, age, sex, BMI, race, ethnicity)
+    # Can choose to include additional covariates here
+```
+
+# Build and fit baseline model
+
+## Create stage transition table
+
+```{r Stage transition table}
+statetbl <- statetable.msm(state, ID, data=df)
+statetbl
+```
+
+## Assign matrix of allowed transitions, where 0=not allowed and 1=allowed
+
+```{r Matrix of allowed transitions}
+qmat <- rbind(c(0,0,0,0),
+              c(1,1,0,1),
+              c(1,0,1,1),
+              c(1,0,1,1))
+
+# Assign row and column names to qmat 
+rownames(qmat) <- c("D",rownames(statetbl))
+colnames(qmat) <- colnames(statetbl)
+
+qmat
+```
+
+## Reformat `state` variable and create variable `DaysSinceEntry`
+
+```{r Create DaysSinceEntry}
+df$state <- as.numeric(as.factor(df$state))
+
+#df$JulianDay <- as.numeric(df$date-min(df$date))
+
+df <- df %>% 
+    group_by(ID) %>% 
+    mutate(DaysSinceEntry = as.numeric(date-min(date)))
+```
+
+## Specify initial values and assign to `Q.crude`
+
+```{r Initial values}
+Q.crude <- crudeinits.msm(state ~ DaysSinceEntry, ID, data=df, qmatrix=qmat)
+```
+
+## Fit baseline model and summarize
+
+```{r Baseline model}
+m0 <- msm(state ~ DaysSinceEntry, subject=ID, data=df, qmatrix=Q.crude)
+summary.msm(m0)
+```
+
+# Build and fit covariate models
+
+## Age
+
+```{r Age}
+df$age.cen <- df$age/100
+df$age.mtert <- (df$age > quantile(df$age, 1/3, na.rm=T) & df$age<=quantile(df$age, 2/3, na.rm=T)) + 0
+df$age.utert <- (df$age > quantile(df$age, 2/3, na.rm=T)) + 0
+
+
+m1 <- msm(state ~ DaysSinceEntry, subject=ID, data=df, qmatrix=Q.crude,
+          covariates = ~ age.cen)
+
+m1b <- msm(state ~ DaysSinceEntry, subject=ID, data=df, qmatrix=Q.crude,
+           covariates = list("2-4" = ~ age.mtert + age.utert,
+                             "3-4" = ~ age.mtert + age.utert,
+                             "4-3" = ~ age.mtert + age.utert,
+                             "4-1" = ~ age.mtert + age.utert))
+
+m1a <- msm(state ~ DaysSinceEntry, subject=ID, data=df, qmatrix=Q.crude,
+           covariates = list("2-4" = ~ age.cen,
+                             "3-4" = ~ age.cen,
+                             "4-3" = ~ age.cen,
+                             "4-1" = ~ age.cen))
+
+summary.msm(m1a)
+
+# Evaluate log likelihoods and compare 
+pvalue.age <- 1 - pchisq((logLik(m1a) - logLik(m0)) * 2, df=3)
+    # Tells us that age is important; sig P value
+    # Will need data on vacc status - age liked confounded by vacc status 
+
+# Evaluate AIC and compare
+AIC(m0, m1, m1a)
+```
+
+## BMI
+
+```{r BMI}
+df$BMI.cen <- df$BMI/100
+
+m2 <- msm(state ~ DaysSinceEntry, subject=ID, data=df, qmatrix=Q.crude,
+          covariates = ~ BMI.cen)
+
+m2a <- msm(state ~ DaysSinceEntry, subject=ID, data = df, qmatrix = Q.crude,
+           covariates = list("2-4" = ~ BMI.cen,
+                             "3-4" = ~ BMI.cen,
+                             "4-3" = ~ BMI.cen,
+                             "4-1" = ~ BMI.cen))
+
+summary.msm(m2a)
+
+# Evaluate AIC and compare
+AIC(m0, m2, m2a)
+```
+
+## Sex
+
+```{r Sex}
+df <- df %>% 
+    mutate(Male = ifelse(sex=="Male", 1, 0),
+           Female = ifelse(sex=="Female", 1, 0))
+
+m3 <- msm(state ~ DaysSinceEntry, subject=ID, data=df, qmatrix=Q.crude, covariates = ~ Male)
+
+m3 <- msm(state ~ DaysSinceEntry, subject=ID, data=df, qmatrix=Q.crude,
+          covariates = ~ as.factor(sex))
+
+summary.msm(m3)
+```
+
+## Race
+
+```{r Race}
+df <- df %>% 
+    mutate(Black = ifelse(race=="Black or African American", 1, 0),
+           Asian = ifelse(race=="Asian", 1, 0),
+           White = ifelse(race=="White or Caucasian", 1, 0),
+           Race_Other = ifelse(race %in% c("Native Hawaiian or Other Pacific Islander", "Other", "Unknown"), 1, 0))
+
+#m4 <- msm(state ~ DaysSinceEntry, subject=ID, data=df, qmatrix=Q.crude, covariates = ~ Black + Asian + White + Race_Other)
+
+m4 <- msm(state ~ DaysSinceEntry, subject=ID, data=df, qmatrix=Q.crude,
+          covariates = ~ as.factor(race))
+
+summary.msm(m4)
+```
+
+## Ethnicity
+
+```{r Ethnicity}
+df <- df %>% 
+    mutate(Hispanic = ifelse(ethnicity=="Hispanic or Latino", 1, 0),
+           NotHispanic = ifelse(ethnicity=="Not Hispanic or Latino", 1, 0),
+           Ethnicity_Unk = ifelse(ethnicity=="Unknown or Caucasian", 1, 0))
+
+#m5 <- msm(state ~ DaysSinceEntry, subject=ID, data=df, qmatrix=Q.crude, covariates = ~ Hispanic + NotHispanic + Ethnicity_Unk)
+
+m5 <- msm(state ~ DaysSinceEntry, subject=ID, data=df, qmatrix=Q.crude,
+          covariates = ~ as.factor(ethnicity))
+
+summary.msm(m5)
+```
+
+## Full model: Race, ethnicity, sex, age, BMI
+
+```{r Full model: Age, BMI, sex, race, ethnicity}
+m.full <- msm(state ~ DaysSinceEntry, subject=ID, data=df, qmatrix=Q.crude,
+              covariates = ~  age.cen + BMI.cen + as.factor(sex) + as.factor(race) + as.factor(ethnicity))
+
+summary.msm(m.full)
+
+# Transition probability matrix 
+pmatrix.msm(m.full)
+
+# Save as R object
+# saveRDS(m.full, "/Users/sreynolds2/Documents/GitHub/MS-Markov_Covid_Staging/MSM_full.rds")
+```
+
+### Plot of observed and expected prevalences
+
+```{r Full model: Plot of obs and exp prevalences}
+plot.prevalence.msm(m.full)
+```
+
+# Compare full and baseline model: AIC and log likelihood
+
+```{r Compare full and baseline model}
+# AIC
+AIC(m0, m.full)
+
+# Log likelihood
+logLik(m.full) - logLik(m0)
+```
+
+# Other functions from msm package to review
+
+```{r Other functions from msm package, eval=F}
+# Rough estimate of goodness of fit of model
+    # Estimates observed number of individuals at each state at a series of times
+    # Compares these with predicted numbers 
+prevalence.msm()
+
+# Plot of observed and expected prevalences 
+plot.prevalence.msm(m1b)
+
+# Pearson-type goodness-of-fit test for model
+pearson.msm()
+
+# Summarize observed and expected prevalences at each state for each time
+    # Also prints hazard ratios for models with covariate effects 
+summary.msm(m1a)
+
+# List of tables containing odds ratio estimates, one table per covariate
+odds.msm(m1a)
+```
