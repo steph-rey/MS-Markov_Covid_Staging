@@ -3,7 +3,7 @@
 #            Travis Porco (Travis.Porco@ucsf.edu)
 #            Seth Blumberg (Seth.Blumberg@ucsf.edu)
 # Date Created: 2022-04-15
-# Date Modified: 2022-04-15 at 1:00PM PT 
+# Date Modified: 2022-04-18 at 3:30PM PT 
 
 # Load required packages 
 library(tidyverse)
@@ -15,7 +15,7 @@ library(tidyverse)
     #     ... 
     # Each col corresponds to indiv leaving that state
 
-# 3-state Model 
+# 3-State Model 
     # A -> B, A -> C
 
 # Assign values to transition intensity matrix 
@@ -34,15 +34,26 @@ Check.Col.Sum <- function(intensmat, eps=1e-8) {
 # Run function to check col sums 
 Check.Col.Sum(TransIntensityMat1)
 
-# Build function to check if integer
+# Build function to fix column sums of transition intensity matrix 
+Fix.Col.Sum <- function(intensmat, eps=1e-8) {
+    if (nrow(intensmat) != ncol(intensmat)) {
+        stop("Fix.Col.Sum: Matrix not square")
+    }
+    diag(intensmat) <- rep(0, dim(intensmat)[1])
+    colsum <- apply(intensmat,2,sum)  
+    diag(intensmat) <- -colsum
+    intensmat
+}
+
+# Build function to check if value is an integer
 is.integer.value <- function(nn) {
     all((round(nn) - nn) == 0)
 }
 
 # Build function to generate Markov chain 
 GenerateMC <- function(initstate, endtime, intensmat, maxit=65536, eps=1e-10) {
-    if (!is.numeric(initstate) || initstate <= 0 || initstate > dim(intensmat)[2] || is.integer.value(initstate)) {
-        stop("Invalid state")
+    if (!is.numeric(initstate) || initstate <= 0 || initstate > dim(intensmat)[2] || !is.integer.value(initstate)) {
+        stop(paste0("At top of GenerateMC: Invalid state ", as.character(initstate)))
     }
     if (!is.numeric(endtime) || endtime <= 0) {
         stop("Invalid end time")
@@ -65,7 +76,7 @@ GenerateMC <- function(initstate, endtime, intensmat, maxit=65536, eps=1e-10) {
             curit <- curit + 1
         }
         if (curstate <= 0 || curstate > dim(intensmat)[2]) {
-            stop("Invalid state")
+            stop(paste0("Invalid state ", as.character(curstate)))
         }
         flows <- intensmat[ , curstate]
         if (!all(is.finite(flows))) {
@@ -92,5 +103,96 @@ GenerateMC <- function(initstate, endtime, intensmat, maxit=65536, eps=1e-10) {
     return(rec)
 }
 
-#GenerateMC <- function(initstate, endtime, intensmat, maxit=65536, eps=1e-10)
-GenerateMC(initstate = , endtime = 500, intensmat = TransIntensityMat1)
+# Assign values to transition intensity matrix 
+TransIntensityMat2 <- structure(c(0, 0, 0, 0, 0, 0.00229847315711706, -0.130701034312921, 
+                                  0, 0.0284025611558036, 0.1, 0.00666666666666667, 0, -0.159666666666667, 
+                                  0.053, 0.1, 0.0107334525939177, 0, 0.0785330948121646, -0.0892665474060823, 
+                                  0, 0, 0, 0, 0, 0), 
+                                .Dim = c(5L, 5L), 
+                                .Dimnames = list(c("D", "M", "MS", "S", "R"), c("D", "M", "MS", "S", "R")))
+
+# Run function to check column sums of transition intensity matrix
+Check.Col.Sum(TransIntensityMat2)  # Returns TRUE 
+
+GenerateMC(initstate = 2, endtime = 500, intensmat = TransIntensityMat2)
+
+# Build function to check event list element
+Good.Event.List.Element <- function(elt) {
+    class(elt) == "numeric" && length(elt) == 3 && names(elt)[1] == "from" && names(elt)[2] == "to" && names(elt)[3] == "event.time"
+}
+
+# Build function to check event list
+Bad.Event.List <- function(event.list) {
+    if (class(event.list) != "list") {
+        return(FALSE)
+    }
+    if (length(event.list) == 0) {
+        return(TRUE)
+    }
+    !all(sapply(event.list, Good.Event.List.Element))
+}
+
+# Build function to generate patient trajectory - returns initstate, endtime, and event.list
+GenerateTrajectory <- function(initstate, endtime, intensmat) {
+    list(initstate = initstate,
+         endtime = endtime,
+         event.list = GenerateMC(initstate = initstate, endtime = endtime, intensmat = intensmat))
+}
+
+# Build function to convert event.list to patient-day table - returns dataframe containing day and state 
+GeneratePtDayTbl <- function(traj) {
+    if (class(traj) != "list" || length(traj) != 3) {
+        stop("Bad trajectory object")
+    }
+    if (names(traj)[1] != "initstate" || class(traj[[1]]) != "numeric") {
+        stop("Bad trajectory object")
+    }
+    if (names(traj)[2] != "endtime" || class(traj[[2]]) != "numeric" || traj$endtime <= 0) {
+        stop("Bad trajectory object")
+    }
+    if (names(traj)[3] != "event.list" || Bad.Event.List(traj$event.list)) {
+        stop("Bad event list")
+    }
+    days <- 0:round(traj$endtime)
+    if (length(traj$event.list) == 0) {
+        data.frame(time = days,
+                   state = rep(traj$initstate, length(days)))
+    } else {
+        inittrans <- data.frame(from = 0, 
+                                to = traj$initstate, 
+                                event.time = 0)
+        elist <- rbind(inittrans, as.data.frame(do.call(rbind, traj$event.list)))
+        tmptbl <- merge(elist, data.frame(event.time = days, keep = rep(TRUE, length(days))), by = "event.time", all.x = T, all.y = T)
+        tmptbl$keep[is.na(tmptbl$keep)] <- FALSE
+        tmptbl$from <- NULL
+        names(tmptbl)[names(tmptbl) == "to"] <- "state"
+        tmptbl <- tmptbl[order(tmptbl$event.time), ]
+        if (nrow(tmptbl) == 1) {
+            stop("Cannot happen")
+        }
+        for (ii in 2:nrow(tmptbl)) {
+            if (is.na(tmptbl$state[ii])) {
+                if (is.na(tmptbl$state[ii-1])) {
+                    stop("Also cannot happen")
+                }
+                tmptbl$state[ii] <- tmptbl$state[ii-1]
+            }
+        }
+        tmptbl <- tmptbl[tmptbl$keep, ]
+        tmptbl$keep <- NULL
+        names(tmptbl)[names(tmptbl) == "event.time"] <- "time"
+        tmptbl[ , c("time", "state")]
+    }
+}
+
+# Run function and view output 
+GeneratePtDayTbl(xtemp)
+
+
+
+
+
+
+
+
+
