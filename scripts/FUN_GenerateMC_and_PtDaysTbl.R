@@ -3,7 +3,7 @@
 #            Travis Porco (Travis.Porco@ucsf.edu)
 #            Seth Blumberg (Seth.Blumberg@ucsf.edu)
 # Date Created: 2022-04-15
-# Date Modified: 2022-04-19 at 4:00 PM PT 
+# Date Modified: 2022-04-22 at 12:00 PM PT 
 
 # Load required packages 
 library(tidyverse)
@@ -186,13 +186,26 @@ GeneratePtDayTbl <- function(traj) {
 }
 
 # Run function and view output 
-GeneratePtDayTbl(xtemp)
+GeneratePtDayTbl(GenerateTrajectory(initstate = 2, endtime = 512, intensmat = TransIntensityMat2))
 
+# Build function to create dataset
+GenerateMarkovSimData <- function(initstate.vec, endtime, intensmat) {
+    fn <- function(curID, st) {
+        t1 <- GeneratePtDayTbl(GenerateTrajectory(initstate = st, endtime = endtime, intensmat = intensmat))
+        t1$ID <- curID
+        t1
+    }
+    do.call(rbind, Map(fn, 1:length(initstate.vec), initstate.vec))
+}
 
+# Run function and view output 
+d1 <- GenerateMarkovSimData(initstate.vec = c(2, 3, 2, 4), endtime = 512, intensmat = TransIntensityMat2)
+d1
+dim(d1)
+table(d1$ID)
 
-
-
-
+# Practice running simulation function 
+d2 <- GenerateMarkovSimData(initstate.vec = initstate.vec_covid, endtime = 150, intensmat = Q.crude)
 
 
 
